@@ -1,0 +1,703 @@
+#!/usr/bin/env bash
+
+# letme - gain temporal aws account credentials.
+# Licensed under CC BY 4.0
+# By lockedinspace.com
+
+# CPU: Apple Silicon version.
+# variables. 
+SCRIPT_DIR=$(dirname $BASH_SOURCE)
+VARIABLE_FILE='.letme-cache'
+VARIABLE_TMP_FILE=$(mktemp)
+USING_MFA=true
+MFA_DEVICE=''
+DDB_TABLE='customers'
+AWS_CRED_FILE="$HOME/.aws/credentials"
+AWS_CONFIG_FILE="$HOME/.aws/config"
+CRED_TIMESTAMP=3600
+LETME_VERSION=0.1
+RED='\033[0;31m'
+GREEN='\033[1;32m'
+NC='\033[0m'
+
+# functions.
+howto() 
+{
+cat << EOF
+Gain short-term cross-account aws credentials. 
+Maintain your source's account credentials with the default profile
+tag '[default]' on the credentials/config files.
+
+More help for each command using:
+'letme argument --help'
+
+- perform cache initialization:
+letme --init
+
+- list accounts:
+letme --list
+
+- obtain account cli access:
+letme --c account
+
+- get script variables:
+letme --env
+EOF
+exit 0		
+}
+howto-init() 
+{
+echo -e "$(
+cat << EOF
+Extended help for: ${GREEN}--init${NC}
+In order to improve performance, letme
+saves some cache on your local machine. 
+Update your cache file with the remote DynamoDB database 
+by running the '--init' argument. 
+Pass '-y' argument if no validation prompt is required.
+
+- verbose init:
+letme --init --verbose
+
+- remove cache file (all queries through aws):
+letme --init --remove [-y]
+EOF
+)"
+exit 0		
+}
+howto-list() 
+{
+echo -e "$(
+cat << EOF
+Extended help for: ${GREEN}--list${NC}
+Lists all accounts using their names. 
+
+- list alphabetically (A->Z):
+letme --list --atoz
+
+EOF
+)"
+exit 0		
+}
+howto-c() 
+{
+echo -e "$(
+cat << EOF
+Extended help for: ${GREEN}--c${NC}
+Obtain access to aws accounts.
+'--c' argument updates your '\$HOME/.aws/credentials' and
+'\$HOME/.aws/config' 
+with the corresponding short-term
+access credentials.
+
+- gain access from example1 account:
+letme --c example1
+
+- gain access to EKS clusters (kubectl needed):
+letme --c --eks example1-cluster
+EOF
+)"
+exit 0		
+}
+howto-env() 
+{
+echo -e "$(
+cat << EOF
+Extended help for: ${GREEN}--env${NC}
+Output script information.
+
+- output extended information about this script:
+letme --env --more
+EOF
+)"
+exit 0		
+}
+user-confirmation-prompt()
+{
+	while true; do
+	    read -p "$1" answer
+	    case $answer in
+		yes) return 0;;
+		no) return 99;;
+		* ) echo "please answer [yes|no]";;
+	    esac
+	done	
+}
+user-mfa-input()
+{ 
+    if [[ $USING_MFA == true ]]; then
+        read -p "script demands MFA OTP token: " tt 
+        if [[ "$tt" =~ ^[0-9]+$ ]]; then
+            echo $tt
+            return 0
+        else
+            return 1
+        fi
+    fi     
+}
+
+# checks.
+if [[ $# = 0 ]]; then
+    echo '--help to display options.'
+    exit 2
+elif (! command -v jq &> /dev/null); then
+    echo 'ERROR: jq is not installed.'
+    echo 'jq 1.4 or higher highly recommended.'
+    exit 1
+elif (! command -v aws &> /dev/null); then
+    echo 'ERROR: aws-cli is not installed.'
+    echo 'awscli version 2 highly recommended.'
+    exit 1
+elif (! command -v sed &> /dev/null); then
+    echo 'ERROR: sed is not installed.'
+    exit 1
+else 
+    :
+fi
+
+# main code.
+while [ $# -gt 0 ]; do
+case $1 in
+--help)
+	howto
+	;;
+--init)
+    if [[ $2 == "--help" ]]; then
+        howto-init 
+    elif [[ $2 == '--remove' ]] && [[ $3 == '-y' ]]; then
+        if [[ -e "$SCRIPT_DIR/$VARIABLE_FILE" ]]; then
+            rm -rf "$SCRIPT_DIR/$VARIABLE_FILE"
+            echo 'cache file sucessfully removed, all api calls will be routed through aws.'
+            echo 'performance could be lower and monthly billing might go up.'
+            exit 0
+        else
+            echo 'ERROR: cache file could not be found.'
+            exit 1
+        fi
+    elif [[ $2 == '--remove' ]]; then
+        user-confirmation-prompt "do you want to remove all cached items? [yes|no]: "
+        x=$?
+        if [[ $x == 0 ]] && [[ -e "$SCRIPT_DIR/$VARIABLE_FILE" ]]; then
+            rm -rf "$SCRIPT_DIR/$VARIABLE_FILE"
+            echo 'cache file sucessfully removed, all api calls will be routed through aws.'
+            echo 'performance could be lower and monthly billing might go up.'
+            exit 0
+        else
+            if [[ $x == 99 ]]; then
+                echo 'cache removal stopped.'
+                exit 0
+            else
+                echo 'ERROR: cache file could not be found.'
+                exit 1
+            fi
+        fi
+    else
+        if [[ $2 == "--verbose" ]]; then
+            echo 'running init with verbosity.'
+            aws dynamodb scan --table-name customers | jq -r '.Items[] | ([.id.N,.name.S,.role.S,first(.region.L[].S)] | join(","))' > $VARIABLE_TMP_FILE
+            if [[ ${PIPESTATUS[0]} == '0' ]]; then
+                echo "cache file on: $SCRIPT_DIR/$VARIABLE_FILE"
+                echo 'reloading content.'
+                cat $VARIABLE_TMP_FILE > $SCRIPT_DIR/$VARIABLE_FILE
+                rm -rf $VARIABLE_TMP_FILE
+                echo 'init performed successfully.'
+                exit 0
+            else
+                echo 'ERROR: could not connect to DynamoDB.' 
+                echo "try running: 'aws dynamodb list-tables' and edit the script variable 'DDB_TABLE' with the corresponding table."
+                rm -rf $VARIABLE_TMP_FILE
+                exit 1
+            fi
+        else
+            aws dynamodb scan --table-name customers | jq -r '.Items[] | ([.id.N,.name.S,.role.S,first(.region.L[].S)] | join(","))' > $VARIABLE_TMP_FILE
+            if [[ ${PIPESTATUS[0]} == '0' ]]; then
+                cat $VARIABLE_TMP_FILE > $SCRIPT_DIR/$VARIABLE_FILE
+                rm -rf $VARIABLE_TMP_FILE
+                exit 0
+            else
+                rm -rf $VARIABLE_TMP_FILE
+                exit 1
+            fi
+        fi
+    fi
+	;;
+--list)
+    if [[ $2 == "--help" ]]; then
+        howto-list
+    elif [[ -e "$SCRIPT_DIR/$VARIABLE_FILE" ]]; then
+        if [[ $2 == "--atoz" ]]; then
+            cat $SCRIPT_DIR/$VARIABLE_FILE | awk -F',' '{print $2}' | sort
+            exit 0
+        else
+            cat $SCRIPT_DIR/$VARIABLE_FILE | awk -F',' '{print $2}'
+            exit 0
+        fi
+    else
+        if [[ $2 == "--atoz" ]]; then
+            aws dynamodb scan --table-name $DDB_TABLE | jq -r '.Items[].name.S' | sort
+            if [[ ${PIPESTATUS[0]} == 0 ]]; then
+                exit 0
+            else
+                echo 'ERROR: could not connect to DynamoDB.'
+                exit 1
+            fi
+        else
+            aws dynamodb scan --table-name $DDB_TABLE | jq -r '.Items[].name.S'
+            if [[ ${PIPESTATUS[0]} == 0 ]]; then
+                exit 0
+            else
+                echo 'ERROR: could not connect to DynamoDB.'
+                exit 1
+            fi
+            exit 0
+        fi
+    fi
+	;;
+--c)
+    if [[ $2 == "--help" ]]; then
+        howto-c
+    elif [[ $USING_MFA == true ]] && [[ ! -n $MFA_DEVICE ]]; then
+        echo "ERROR: MFA authentication is enabled but MFA serial number is not set, edit the global script variable 'MFA_DEVICE' with the mfa serial number."
+        echo "get the MFA serial number from 'aws iam list-mfa-devices'"
+        exit 1
+    elif [[ -e "$SCRIPT_DIR/$VARIABLE_FILE" ]]; then
+        cat "$SCRIPT_DIR/$VARIABLE_FILE" | awk -F',' '{print $2}' > $VARIABLE_TMP_FILE
+        if grep -Fxq "$2" $VARIABLE_TMP_FILE; then
+            rm -rf $VARIABLE_TMP_FILE
+            t=$(cat "$SCRIPT_DIR/$VARIABLE_FILE" | grep "$2" | awk -F',' '{print $3}')
+            if grep -Fxq "[$2]" $AWS_CRED_FILE && grep -Fxq "[profile $2]" $AWS_CONFIG_FILE; then                
+                if [[ $USING_MFA == true ]]; then
+                    tt=$(user-mfa-input)
+                    a1=$(aws sts assume-role --role-arn "$t" --role-session-name letme-$2 --duration-seconds $CRED_TIMESTAMP --serial-number $MFA_DEVICE --token-code $tt)
+                    if [[ $? == 0 ]]; then
+                        sed "/#s-$2/,/#e-$2/d" $AWS_CRED_FILE > $VARIABLE_TMP_FILE
+                        cat $VARIABLE_TMP_FILE > $AWS_CRED_FILE
+                        rm -rf $VARIABLE_TMP_FILE
+                        sed "/#s-$2/,/#e-$2/d" $AWS_CONFIG_FILE > $VARIABLE_TMP_FILE
+                        cat $VARIABLE_TMP_FILE > $AWS_CONFIG_FILE
+                        rm -rf $VARIABLE_TMP_FILE
+                    else
+                        exit 1
+                    fi
+                else
+                    a1=$(aws sts assume-role --role-arn "$t" --role-session-name letme-$2 --duration-seconds $CRED_TIMESTAMP)
+                fi
+                if [[ $? == 0 ]]; then
+                    sed "/#s-$2/,/#e-$2/d" $AWS_CRED_FILE > $VARIABLE_TMP_FILE
+                    cat $VARIABLE_TMP_FILE > $AWS_CRED_FILE
+                    rm -rf $VARIABLE_TMP_FILE
+                    sed "/#s-$2/,/#e-$2/d" $AWS_CONFIG_FILE > $VARIABLE_TMP_FILE
+                    cat $VARIABLE_TMP_FILE > $AWS_CONFIG_FILE
+                    rm -rf $VARIABLE_TMP_FILE
+                else
+                    echo "ERROR: something wrong happened while trying to assume the role for account '$2'"
+                    exit 1
+                fi
+
+                a2=$(jq -r '.Credentials.AccessKeyId' <<<"$a1")
+                a3=$(jq -r '.Credentials.SecretAccessKey' <<<"$a1")
+                a4=$(jq -r '.Credentials.SessionToken' <<<"$a1")
+                a5=$(cat "$SCRIPT_DIR/$VARIABLE_FILE" | grep "$2" | awk -F',' '{print $4}')
+                a6=$(jq -r '.Credentials.Expiration' <<<"$a1")
+                cat <<EOF >> $AWS_CRED_FILE
+#s-$2
+[$2]
+aws_access_key_id = $a2
+aws_secret_access_key = $a3
+aws_session_token = $a4
+#e-$2
+EOF
+                cat <<EOF >> $AWS_CONFIG_FILE
+#s-$2
+[profile $2]
+region = $a5
+output = json
+#e-$2
+EOF
+                echo "you can use the argument '--profile $2' to call aws resources from within: $2"
+                echo "the newly granted credentials will expire on: $a6"
+                exit 0
+            elif grep -Fxq "[$2]" $AWS_CRED_FILE && ! grep -Fxq "[profile $2]" $AWS_CONFIG_FILE; then
+                if [[ $USING_MFA == true ]]; then
+                    tt=$(user-mfa-input)
+                    b1=$(aws sts assume-role --role-arn "$t" --role-session-name letme-$2 --duration-seconds $CRED_TIMESTAMP --serial-number $MFA_DEVICE --token-code $tt)
+                    if [[ $? == 0 ]]; then
+                        sed "/#s-$2/,/#e-$2/d" $AWS_CRED_FILE > $VARIABLE_TMP_FILE
+                        cat $VARIABLE_TMP_FILE > $AWS_CRED_FILE
+                        rm -rf $VARIABLE_TMP_FILE
+                    else
+                        exit 1
+                    fi
+                else
+                    b1=$(aws sts assume-role --role-arn "$t" --role-session-name letme-$2 --duration-seconds $CRED_TIMESTAMP)
+                fi
+                if [[ $? == 0 ]]; then
+                    sed "/#s-$2/,/#e-$2/d" $AWS_CONFIG_FILE > $VARIABLE_TMP_FILE
+                    cat $VARIABLE_TMP_FILE > $AWS_CONFIG_FILE
+                    rm -rf $VARIABLE_TMP_FILE
+                else
+                    echo "ERROR: something wrong happened while trying to assume the role for account '$2'"
+                    exit 1
+                fi
+                b2=$(jq -r '.Credentials.AccessKeyId' <<<"$b1")
+                b3=$(jq -r '.Credentials.SecretAccessKey' <<<"$b1")
+                b4=$(jq -r '.Credentials.SessionToken' <<<"$b1")
+                b5=$(cat "$SCRIPT_DIR/$VARIABLE_FILE" | grep "$2" | awk -F',' '{print $4}')
+                b6=$(jq -r '.Credentials.Expiration' <<<"$b1")
+                cat <<EOF >> $AWS_CRED_FILE
+#s-$2
+[$2]
+aws_access_key_id = $b2
+aws_secret_access_key = $b3
+aws_session_token = $b4
+#e-$2
+EOF
+                cat <<EOF >> $AWS_CONFIG_FILE
+#s-$2
+[profile $2]
+region = $b5
+output = json
+#e-$2
+EOF
+                echo "you can use the argument '--profile $2' to call aws resources from within: $2"
+                echo "the newly granted credentials will expire on: $b6"
+                exit 0
+            elif ! grep -Fxq "[$2]" $AWS_CRED_FILE && grep -Fxq "[profile $2]" $AWS_CONFIG_FILE; then
+                if [[ $USING_MFA == true ]]; then
+                    tt=$(user-mfa-input)
+                    c1=$(aws sts assume-role --role-arn "$t" --role-session-name letme-$2 --duration-seconds $CRED_TIMESTAMP --serial-number $MFA_DEVICE --token-code $tt)
+                    if [[ $? == 0 ]]; then
+                        sed "/#s-$2/,/#e-$2/d" $AWS_CONFIG_FILE > $VARIABLE_TMP_FILE
+                        cat $VARIABLE_TMP_FILE > $AWS_CONFIG_FILE
+                        rm -rf $VARIABLE_TMP_FILE
+                    else
+                        exit 1
+                    fi
+                else
+                    c1=$(aws sts assume-role --role-arn "$t" --role-session-name letme-$2 --duration-seconds $CRED_TIMESTAMP)
+                fi
+                if [[ $? == 0 ]]; then
+                    sed "/#s-$2/,/#e-$2/d" $AWS_CONFIG_FILE > $VARIABLE_TMP_FILE
+                    cat $VARIABLE_TMP_FILE > $AWS_CONFIG_FILE
+                    rm -rf $VARIABLE_TMP_FILE
+                else
+                    echo "ERROR: something wrong happened while trying to assume the role for account '$2'"
+                    exit 1
+                fi
+                c2=$(jq -r '.Credentials.AccessKeyId' <<<"$c1")
+                c3=$(jq -r '.Credentials.SecretAccessKey' <<<"$c1")
+                c4=$(jq -r '.Credentials.SessionToken' <<<"$c1")
+                c5=$(cat "$SCRIPT_DIR/$VARIABLE_FILE" | grep "$2" | awk -F',' '{print $4}')
+                c6=$(jq -r '.Credentials.Expiration' <<<"$c1")
+                cat <<EOF >> $AWS_CRED_FILE
+#s-$2
+[$2]
+aws_access_key_id = $c2
+aws_secret_access_key = $c3
+aws_session_token = $c4
+#e-$2
+EOF
+                cat <<EOF >> $AWS_CONFIG_FILE
+#s-$2
+[profile $2]
+region = $c5
+output = json
+#e-$2
+EOF
+                echo "you can use the argument '--profile $2' to call aws resources from within: $2"
+                echo "the newly granted credentials will expire on: $c6"
+                exit 0
+            else
+                if [[ $USING_MFA == true ]]; then
+                    tt=$(user-mfa-input)
+                    d1=$(aws sts assume-role --role-arn "$t" --role-session-name letme-$2 --duration-seconds $CRED_TIMESTAMP --serial-number $MFA_DEVICE --token-code $tt)
+                    if [[ $? == 0 ]]; then
+                        :
+                    else
+                        exit 1
+                    fi
+                else
+                    d1=$(aws sts assume-role --role-arn "$t" --role-session-name letme-$2 --duration-seconds $CRED_TIMESTAMP)
+                fi
+                if [[ $? == 0 ]]; then
+                    :
+                else
+                    echo "ERROR: something wrong happened while trying to assume the role for account '$2'"
+                    exit 1
+                fi
+                d2=$(jq -r '.Credentials.AccessKeyId' <<<"$d1")
+                d3=$(jq -r '.Credentials.SecretAccessKey' <<<"$d1")
+                d4=$(jq -r '.Credentials.SessionToken' <<<"$d1")
+                d5=$(cat "$SCRIPT_DIR/$VARIABLE_FILE" | grep "$2" | awk -F',' '{print $4}')
+                d6=$(jq -r '.Credentials.Expiration' <<<"$d1")
+                cat <<EOF >> $AWS_CRED_FILE
+#s-$2
+[$2]
+aws_access_key_id = $d2
+aws_secret_access_key = $d3
+aws_session_token = $d4
+#e-$2
+EOF
+                cat <<EOF >> $AWS_CONFIG_FILE
+#s-$2
+[profile $2]
+region = $d5
+output = json
+#e-$2
+EOF
+                echo "you can use the argument '--profile $2' to call aws resources from within: $2"
+                echo "the newly granted credentials will expire on: $d6"
+                exit 0
+            fi
+        else
+            echo "ERROR: account '$2' not found, maybe run 'letme --init' to update local cache?"
+            rm -rf $VARIABLE_TMP_FILE
+            exit 1
+        fi
+    else
+        echo 'running without local cache.'
+        aws dynamodb scan --table-name customers | jq -r '.Items[] | .name.S' > $VARIABLE_TMP_FILE
+        if grep -Fxq "$2" $VARIABLE_TMP_FILE; then
+            rm -rf $VARIABLE_TMP_FILE
+            u=$(aws dynamodb scan --table-name $DDB_TABLE | jq -r --arg e "$2" '.Items[] | select(.name.S==$e) | .role.S')
+            if grep -Fxq "[$2]" $AWS_CRED_FILE && grep -Fxq "[profile $2]" $AWS_CONFIG_FILE; then                
+                if [[ $USING_MFA == true ]]; then
+                    tt=$(user-mfa-input)
+                    e1=$(aws sts assume-role --role-arn "$u" --role-session-name letme-$2 --duration-seconds $CRED_TIMESTAMP --serial-number $MFA_DEVICE --token-code $tt)
+                    if [[ $? == 0 ]]; then
+                        sed "/#s-$2/,/#e-$2/d" $AWS_CRED_FILE > $VARIABLE_TMP_FILE
+                        cat $VARIABLE_TMP_FILE > $AWS_CRED_FILE
+                        rm -rf $VARIABLE_TMP_FILE
+                        sed "/#s-$2/,/#e-$2/d" $AWS_CONFIG_FILE > $VARIABLE_TMP_FILE
+                        cat $VARIABLE_TMP_FILE > $AWS_CONFIG_FILE
+                        rm -rf $VARIABLE_TMP_FILE
+                    else
+                        exit 1
+                    fi
+                else
+                    e1=$(aws sts assume-role --role-arn "$u" --role-session-name letme-$2 --duration-seconds $CRED_TIMESTAMP)
+                fi
+                if [[ $? == 0 ]]; then
+                    sed "/#s-$2/,/#e-$2/d" $AWS_CRED_FILE > $VARIABLE_TMP_FILE
+                    cat $VARIABLE_TMP_FILE > $AWS_CRED_FILE
+                    rm -rf $VARIABLE_TMP_FILE
+                    sed "/#s-$2/,/#e-$2/d" $AWS_CONFIG_FILE > $VARIABLE_TMP_FILE
+                    cat $VARIABLE_TMP_FILE > $AWS_CONFIG_FILE
+                    rm -rf $VARIABLE_TMP_FILE
+                else
+                    echo "ERROR: something wrong happened while trying to assume the role for account '$2'"
+                    exit 1
+                fi
+                e2=$(jq -r '.Credentials.AccessKeyId' <<<"$e1")
+                e3=$(jq -r '.Credentials.SecretAccessKey' <<<"$e1")
+                e4=$(jq -r '.Credentials.SessionToken' <<<"$e1")
+                e5=$(aws dynamodb scan --table-name $DDB_TABLE | jq -r --arg e "$2" '.Items[] | select(.name.S==$e ) | first(.region.L[].S)')
+                e6=$(jq -r '.Credentials.Expiration' <<<"$e1")
+                cat <<EOF >> $AWS_CRED_FILE
+#s-$2
+[$2]
+aws_access_key_id = $e2
+aws_secret_access_key = $e3
+aws_session_token = $e4
+#e-$2
+EOF
+                cat <<EOF >> $AWS_CONFIG_FILE
+#s-$2
+[profile $2]
+region = $e5
+output = json
+#e-$2
+EOF
+                echo "you can use the argument '--profile $2' to call aws resources from within: $2"
+                echo "the newly granted credentials will expire on: $e6"
+                exit 0
+            elif grep -Fxq "[$2]" $AWS_CRED_FILE && ! grep -Fxq "[profile $2]" $AWS_CONFIG_FILE; then                
+                if [[ $USING_MFA == true ]]; then
+                    tt=$(user-mfa-input)
+                    f1=$(aws sts assume-role --role-arn "$u" --role-session-name letme-$2 --duration-seconds $CRED_TIMESTAMP --serial-number $MFA_DEVICE --token-code $tt)
+                    if [[ $? == 0 ]]; then
+                        sed "/#s-$2/,/#e-$2/d" $AWS_CRED_FILE > $VARIABLE_TMP_FILE
+                        cat $VARIABLE_TMP_FILE > $AWS_CRED_FILE
+                        rm -rf $VARIABLE_TMP_FILE
+                    else
+                        exit 1
+                    fi
+                else
+                    f1=$(aws sts assume-role --role-arn "$u" --role-session-name letme-$2 --duration-seconds $CRED_TIMESTAMP)
+                fi
+                if [[ $? == 0 ]]; then
+                    sed "/#s-$2/,/#e-$2/d" $AWS_CRED_FILE > $VARIABLE_TMP_FILE
+                    cat $VARIABLE_TMP_FILE > $AWS_CRED_FILE
+                    rm -rf $VARIABLE_TMP_FILE
+                else
+                    echo "ERROR: something wrong happened while trying to assume the role for account '$2'"
+                    exit 1
+                fi
+                f2=$(jq -r '.Credentials.AccessKeyId' <<<"$f1")
+                f3=$(jq -r '.Credentials.SecretAccessKey' <<<"$f1")
+                f4=$(jq -r '.Credentials.SessionToken' <<<"$f1")
+                f5=$(aws dynamodb scan --table-name $DDB_TABLE | jq -r --arg e "$2" '.Items[] | select(.name.S==$e ) | first(.region.L[].S)')
+                f6=$(jq -r '.Credentials.Expiration' <<<"$f1")
+                cat <<EOF >> $AWS_CRED_FILE
+#s-$2
+[$2]
+aws_access_key_id = $f2
+aws_secret_access_key = $f3
+aws_session_token = $f4
+#e-$2
+EOF
+                cat <<EOF >> $AWS_CONFIG_FILE
+#s-$2
+[profile $2]
+region = $f5
+output = json
+#e-$2
+EOF
+                echo "you can use the argument '--profile $2' to call aws resources from within: $2"
+                echo "the newly granted credentials will expire on: $f6"
+                exit 0
+            elif ! grep -Fxq "[$2]" $AWS_CRED_FILE && grep -Fxq "[profile $2]" $AWS_CONFIG_FILE; then
+                if [[ $USING_MFA == true ]]; then
+                    tt=$(user-mfa-input)
+                    g1=$(aws sts assume-role --role-arn "$u" --role-session-name letme-$2 --duration-seconds $CRED_TIMESTAMP --serial-number $MFA_DEVICE --token-code $tt)
+                    if [[ $? == 0 ]]; then
+                        sed "/#s-$2/,/#e-$2/d" $AWS_CONFIG_FILE > $VARIABLE_TMP_FILE
+                        cat $VARIABLE_TMP_FILE > $AWS_CONFIG_FILE
+                        rm -rf $VARIABLE_TMP_FILE
+                    else
+                        exit 1
+                    fi
+                else
+                    g1=$(aws sts assume-role --role-arn "$u" --role-session-name letme-$2 --duration-seconds $CRED_TIMESTAMP)
+                fi
+                if [[ $? == 0 ]]; then
+                    sed "/#s-$2/,/#e-$2/d" $AWS_CONFIG_FILE > $VARIABLE_TMP_FILE
+                    cat $VARIABLE_TMP_FILE > $AWS_CONFIG_FILE
+                    rm -rf $VARIABLE_TMP_FILE
+                else
+                    echo "ERROR: something wrong happened while trying to assume the role for account '$2'"
+                    exit 1
+                fi
+                g2=$(jq -r '.Credentials.AccessKeyId' <<<"$g1")
+                g3=$(jq -r '.Credentials.SecretAccessKey' <<<"$g1")
+                g4=$(jq -r '.Credentials.SessionToken' <<<"$g1")
+                g5=$(aws dynamodb scan --table-name $DDB_TABLE | jq -r --arg e "$2" '.Items[] | select(.name.S==$e ) | first(.region.L[].S)')
+                g6=$(jq -r '.Credentials.Expiration' <<<"$g1")
+                cat <<EOF >> $AWS_CRED_FILE
+#s-$2
+[$2]
+aws_access_key_id = $g2
+aws_secret_access_key = $g3
+aws_session_token = $g4
+#e-$2
+EOF
+                cat <<EOF >> $AWS_CONFIG_FILE
+#s-$2
+[profile $2]
+region = $g5
+output = json
+#e-$2
+EOF
+                echo "you can use the argument '--profile $2' to call aws resources from within: $2"
+                echo "the newly granted credentials will expire on: $g6"
+                exit 0
+            else
+                if [[ $USING_MFA == true ]]; then
+                    tt=$(user-mfa-input)
+                    h1=$(aws sts assume-role --role-arn "$u" --role-session-name letme-$2 --duration-seconds $CRED_TIMESTAMP --serial-number $MFA_DEVICE --token-code $tt)
+                    if [[ $? == 0 ]]; then
+                        :
+                    else
+                        exit 1
+                    fi
+                else
+                    h1=$(aws sts assume-role --role-arn "$u" --role-session-name letme-$2 --duration-seconds $CRED_TIMESTAMP)
+                fi
+                if [[ $? == 0 ]]; then
+                    :
+                else
+                    echo "ERROR: something wrong happened while trying to assume the role for account '$2'"
+                    exit 1
+                fi
+                h2=$(jq -r '.Credentials.AccessKeyId' <<<"$h1")
+                h3=$(jq -r '.Credentials.SecretAccessKey' <<<"$h1")
+                h4=$(jq -r '.Credentials.SessionToken' <<<"$h1")
+                h5=$(aws dynamodb scan --table-name $DDB_TABLE | jq -r --arg e "$2" '.Items[] | select(.name.S==$e ) | first(.region.L[].S)')
+                h6=$(jq -r '.Credentials.Expiration' <<<"$h1")
+                cat <<EOF >> $AWS_CRED_FILE
+#s-$2
+[$2]
+aws_access_key_id = $h2
+aws_secret_access_key = $h3
+aws_session_token = $h4
+#e-$2
+EOF
+                cat <<EOF >> $AWS_CONFIG_FILE
+#s-$2
+[profile $2]
+region = $h5
+output = json
+#e-$2
+EOF
+                echo "you can use the argument '--profile $2' to call aws resources from within: $2"
+                echo "the newly granted credentials will expire on: $h6"
+                exit 0
+            fi
+        else
+            echo "ERROR: account '$2' not found on the DynamoDB table '$DDB_TABLE'"
+            exit 1
+        fi
+    fi
+	;;
+--env)
+    if [[ $2 == "--help" ]]; then
+        howto-env
+    elif [[ $2 == "--more" ]]; then
+        ENV_EXTENDED=true
+    fi
+    echo  "·script location:"
+    echo -e "$BASH_SOURCE \n"
+    echo  "·DynamoDB table:"
+    echo -e "$DDB_TABLE \n"
+    echo  "·credentials lifespan:"
+    echo -e "$CRED_TIMESTAMP seconds.\n"
+    if [[ $CRED_TIMESTAMP == 3600 ]]; then
+        echo 'credentials lifespan cannot be higher than 3600 if roles are chained.'
+        echo -e 'https://docs.aws.amazon.com/STS/latest/APIReference/API_AssumeRole.html \n'
+    else
+        echo -e ""
+    fi
+    echo  "·secure authentication:"
+    if [[ $USING_MFA == true ]]; then
+        echo -e "using mfa: ${GREEN}yes${NC}\n"
+    elif [[ $USING_MFA == false ]]; then
+        echo -e "using mfa: ${RED}no${NC}\n"
+    fi
+    echo '·approximately script size:'
+    echo -e "$(du -h $BASH_SOURCE|cut -f 1)\n"
+    echo "·workflow method:"
+    if [[ -e "$SCRIPT_DIR/$VARIABLE_FILE" ]]; then
+        echo -e "using cache: ${GREEN}yes${NC}"
+        echo -e "cache file: $SCRIPT_DIR/$VARIABLE_FILE \n"
+    else
+        echo -e "using cache: ${RED}no${NC} \n"
+    fi
+    echo '·loaded accounts (credentials might have expired):'
+    echo -e "$(cat $AWS_CRED_FILE | grep "\[" ) \n"
+    if [[ $ENV_EXTENDED ]]; then
+        echo 'official website:'
+        echo -e "http://www.lockedinspace.com\n"
+        echo 'licensed under:'
+        echo -e "CC BY 4.0\n"
+        echo 'letme version:'
+        echo -e "${LETME_VERSION}\n"
+        exit 0
+    fi
+    exit 0
+	;;
+*)
+    echo "ERROR: '$1' unrecognized option."
+    exit 1
+	;;
+esac
+done
