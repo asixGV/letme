@@ -1,0 +1,35 @@
+{
+ "id": 123456789,
+ "name": "myclient2",
+ "url_qa": [
+  "false"
+ ],
+ "k8s": [
+  "false"
+ ],
+ "tier": "production",
+ "url_sta": [
+  "false"
+ ],
+ "url_pre": [
+  "false"
+ ],
+ "role": "arn:aws:iam::123456789:role/accountswitch",
+ "technologies": [
+  "php",
+  "nginx"
+ ],
+ "vcs_app": [
+  "false"
+ ],
+ "vcs_inf": [
+  "false"
+ ],
+ "region": [
+  "eu-west-1"
+ ],
+ "description": "this is a skeleton for an aws account named myclient2 which will be acceded through the role accountswitch.",
+ "url_pro": [
+  "http://example.com"
+ ]
+}
