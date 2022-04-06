@@ -2,12 +2,13 @@
 ### _gain cross-account short-term aws credentials._
 
 `letme` is a simple bash script that enables the source user to interact with multiple
-aws accounts through the aws command line interface (aws-cli) using the `--profile` argument and using a DynamoDB to centralize information.
+aws accounts through the aws command line interface (aws-cli) using the `--profile` argument and centralizing the information on a DynamoDB table.I
+to better understand, image that the DynamoDB is an API that is requested by `letme` and the result is shown to the end user.
 
 ### Requirements:
 - access to an AWS account.
 - a DynamoDB table (located on the 'main' account) with a pre-defined structure (check `/knowledge/dynamodb-structure.json`)
-- a trusted iam role on accounts each that need to be accessed. 
+- a trusted iam role on each account that need to be accessed. 
 - unix based system supporting bash version 3.2.57 or above
 - script dependencies ([jq], [aws-cli], [sed])
 > note: we endorse reading the following guides to better understand the needs of `letme`
