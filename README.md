@@ -26,8 +26,10 @@ git clone https://github.com/lockedinspace/letme.git
 ```
 - provide script execute permissions and move to any $PATH directory:
 ```sh
+#get the second path from the $PATH variable
+var=$(echo $PATH | awk -F':' '{print $2}')
 chmod 755 letme/src/letme
-mv letme/src/letme $PATH
+mv letme/src/letme $var
 ```
 ##### _directly from brainer:_
 work in progress.
