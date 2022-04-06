@@ -36,6 +36,10 @@ work in progress.
 > note: be sure to clean up any unwanted files once you have installed and configured everything.
 * * *
 ### Setting up letme
+- check if letme is installed correctly.
+```sh
+letme --help
+```
    [jq]: <https://github.com/stedolan/jq>
    [aws-cli]: <https://github.com/aws/aws-cli>
    [sed]: <https://linux.die.net/man/1/sed>
