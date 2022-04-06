@@ -26,8 +26,8 @@ git clone https://github.com/lockedinspace/letme.git
 ```
 - provide script execute permissions and move to any $PATH directory:
 ```sh
-chmod 755 /src/letme
-mv /src/letme $PATH
+chmod 755 letme/src/letme
+mv letme/src/letme $PATH
 ```
 ##### _directly from brainer:_
 work in progress.
