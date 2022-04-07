@@ -153,7 +153,7 @@ elif (! command -v sed &> /dev/null); then
     exit 1
 elif [[ ! -n $MFA_DEVICE ]]; then
     echo 'WARNING: no DynamoDB table specified (some functions might not work).'
-    echo "edit the script variable 'DDB_TABLE' with the table to fetch data from."
+    echo -e "edit the script variable 'DDB_TABLE' with the table to fetch data from.\n"
 else 
     :
 fi
