@@ -29,7 +29,7 @@ git clone https://github.com/lockedinspace/letme.git
 #get the second path from the $PATH variable
 var=$(echo $PATH | awk -F':' '{print $1}')
 chmod 755 letme/src/letme
-mv letme/src/letme $var
+mv -f letme/src/letme $var
 ```
 ##### _directly from brainer:_
 work in progress.
