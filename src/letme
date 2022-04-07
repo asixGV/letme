@@ -194,7 +194,7 @@ case $1 in
     else
         if [[ $2 == "--verbose" ]]; then
             echo 'running init with verbosity.'
-            aws dynamodb scan --table-name customers | jq -r '.Items[] | ([.id.N,.name.S,.role.S,first(.region.L[].S)] | join(","))' > $VARIABLE_TMP_FILE
+            aws dynamodb scan --table-name $DDB_TABLE | jq -r '.Items[] | ([.id.N,.name.S,.role.S,first(.region.L[].S)] | join(","))' > $VARIABLE_TMP_FILE
             if [[ ${PIPESTATUS[0]} == '0' ]]; then
                 echo "cache file on: $SCRIPT_DIR/$VARIABLE_FILE"
                 echo 'reloading content.'
@@ -209,7 +209,7 @@ case $1 in
                 exit 1
             fi
         else
-            aws dynamodb scan --table-name customers | jq -r '.Items[] | ([.id.N,.name.S,.role.S,first(.region.L[].S)] | join(","))' > $VARIABLE_TMP_FILE
+            aws dynamodb scan --table-name $DDB_TABLE | jq -r '.Items[] | ([.id.N,.name.S,.role.S,first(.region.L[].S)] | join(","))' > $VARIABLE_TMP_FILE
             if [[ ${PIPESTATUS[0]} == '0' ]]; then
                 cat $VARIABLE_TMP_FILE > $SCRIPT_DIR/$VARIABLE_FILE
                 rm -rf $VARIABLE_TMP_FILE
@@ -456,7 +456,7 @@ EOF
         fi
     else
         echo 'running without local cache.'
-        aws dynamodb scan --table-name customers | jq -r '.Items[] | .name.S' > $VARIABLE_TMP_FILE
+        aws dynamodb scan --table-name $DDB_TABLE | jq -r '.Items[] | .name.S' > $VARIABLE_TMP_FILE
         if grep -Fxq "$2" $VARIABLE_TMP_FILE; then
             rm -rf $VARIABLE_TMP_FILE
             u=$(aws dynamodb scan --table-name $DDB_TABLE | jq -r --arg e "$2" '.Items[] | select(.name.S==$e) | .role.S')
