@@ -27,7 +27,7 @@ git clone https://github.com/lockedinspace/letme.git
 - provide script execute permissions and move to any $PATH directory:
 ```sh
 #get the second path from the $PATH variable
-var=$(echo $PATH | awk -F':' '{print $2}')
+var=$(echo $PATH | awk -F':' '{print $1}')
 chmod 755 letme/src/letme
 mv letme/src/letme $var
 ```
@@ -38,7 +38,7 @@ work in progress.
 ### Setting up letme
 - check if letme is installed correctly.
 ```sh
-letme --help
+sudo letme --help
 ```
    [jq]: <https://github.com/stedolan/jq>
    [aws-cli]: <https://github.com/aws/aws-cli>
