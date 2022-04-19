@@ -29,7 +29,7 @@ Maintain your source's account credentials with the default profile
 tag '[default]' on the credentials/config files.
 
 More help for each command using:
-'letme argument --help'
+'letme --argument --help'
 
 - perform cache initialization:
 letme --init
@@ -74,7 +74,6 @@ Lists all accounts using their names.
 
 - list alphabetically (A->Z):
 letme --list --atoz
-
 EOF
 )"
 exit 0		

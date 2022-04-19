@@ -24,7 +24,7 @@ there are two ways of installing `letme`:
 ```sh
 git clone https://github.com/lockedinspace/letme.git
 ```
-- provide script execute permissions and move to any $PATH directory:
+- provide script execute permissions and move to the first $PATH variable directory:
 ```sh
 #get the second path from the $PATH variable
 var=$(echo $PATH | awk -F':' '{print $1}')
