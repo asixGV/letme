@@ -42,6 +42,7 @@ sudo letme --help
    [jq]: <https://github.com/stedolan/jq>
    [aws-cli]: <https://github.com/aws/aws-cli>
    [sed]: <https://linux.die.net/man/1/sed>
+* * *
 ### Troubleshooting
 ```sh
 ERROR: account '' not found on the DynamoDB table ''
