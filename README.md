@@ -47,5 +47,5 @@ sudo letme --help
 ```sh
 ERROR: account '' not found on the DynamoDB table ''
 ```
-- Please check the region being setted on the default profile from the aws config file. (~/.aws/config)
+- Please check the region being setted on the default profile is the same where DynamoDB table is stored. (~/.aws/config)
 
