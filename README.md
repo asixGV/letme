@@ -18,7 +18,6 @@ To have a better understanding, think of the DynamoDB table as an API that is re
 - https://aws.amazon.com/es/blogs/security/how-to-use-trust-policies-with-iam-roles/
 * * *
 ### Installing letme
-there are two ways of installing `letme`:
 ##### _directly from github:_
 - download source code:
 ```sh
@@ -33,8 +32,6 @@ chmod 755 letme/src/letme
 #move letme script to the first path from the $PATH variable.
 mv -f letme/src/letme $var
 ```
-##### _directly from brainer:_
-work in progress.
 > note: be sure to clean up any unwanted files once you have installed and configured everything.
 * * *
 ### Setting up letme
@@ -45,5 +42,9 @@ sudo letme --help
    [jq]: <https://github.com/stedolan/jq>
    [aws-cli]: <https://github.com/aws/aws-cli>
    [sed]: <https://linux.die.net/man/1/sed>
-
+### Troubleshooting
+```sh
+ERROR: account '' not found on the DynamoDB table ''
+```
+- Please check the region being setted on the default profile from the aws config file. (~/.aws/config)
 
