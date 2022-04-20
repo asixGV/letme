@@ -1,4 +1,4 @@
-# letme (latest: 0.1 stable: 0.1)
+# letme (shell script)
 ### _gain cross-account short-term aws credentials._
 
 `letme` is a simple bash script that enables the source user to interact with multiple
