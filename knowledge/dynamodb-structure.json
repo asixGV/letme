@@ -5,14 +5,15 @@
   "false"
  ],
  "k8s": [
-  "false"
+  "true",
+  "production-cluster"
  ],
  "tier": "production",
  "url_sta": [
   "false"
  ],
  "url_pre": [
-  "false"
+  "http://pre.example.com"
  ],
  "role": "arn:aws:iam::123456789:role/accountswitch",
  "technologies": [
@@ -20,13 +21,14 @@
   "nginx"
  ],
  "vcs_app": [
-  "false"
+  "https://github.com/lockedinspace/letme"
  ],
  "vcs_inf": [
-  "false"
+  "git@bitbucket.org/bla/bla"
  ],
  "region": [
-  "eu-west-1"
+  "eu-west-1",
+  "eu-central-1"
  ],
  "description": "this is a skeleton for an aws account named myclient2 which will be acceded through the role accountswitch.",
  "url_pro": [

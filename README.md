@@ -5,6 +5,15 @@
 aws accounts through the aws command line interface (aws-cli) using the `--profile` argument and centralizing the information on a DynamoDB table.
 To have a better understanding, think of the DynamoDB table as an API that is requested by `letme` and the result is shown to the end user.
 
+### What ``letme`` offers to the end user:
+- secure MFA authentication when requesting credentials (can be disabled).
+- lowering your aws billing with the ``--init`` (creates a local cache to reduce calls made to AWS).
+- multi account management through the ``--profile`` argument (aws-cli argument).
+- made purely with bash (with some external script dependencies, check [Requirements](#requirements)).
+- centralize all your information and mantain a clean organization (DynamoDB table).
+- easily modify this script and the json table structure and adapt to your specific needs.
+- portable through BSD and GNU userlands.
+
 ### Requirements:
 - access to an AWS account.
 - a DynamoDB table (located on the 'main' account) with a pre-defined structure (check `/knowledge/dynamodb-structure.json`)
@@ -45,7 +54,10 @@ sudo letme --help
 * * *
 ### Troubleshooting
 ```sh
-ERROR: account '' not found on the DynamoDB table ''
+$ sudo letme --list
+
+An error occurred (ResourceNotFoundException) when calling the Scan operation: Requested resource not found
+ERROR: could not connect to DynamoDB.
 ```
 - Please check the region being setted on the default profile is the same where DynamoDB table is stored. (~/.aws/config)
 

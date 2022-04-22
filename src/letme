@@ -19,6 +19,7 @@ LETME_VERSION=0.1
 RED='\033[0;31m'
 GREEN='\033[1;32m'
 NC='\033[0m'
+BBK='\033[1;30m' 
 
 # functions.
 howto() 
@@ -74,6 +75,9 @@ Lists all accounts using their names.
 
 - list alphabetically (A->Z):
 letme --list --atoz
+
+- list account specific information:
+letme --list --info example1
 EOF
 )"
 exit 0		
@@ -91,9 +95,6 @@ access credentials.
 
 - gain access from example1 account:
 letme --c example1
-
-- gain access to EKS clusters (kubectl needed):
-letme --c --eks example1-cluster
 EOF
 )"
 exit 0		
@@ -226,16 +227,11 @@ case $1 in
 --list)
     if [[ $2 == "--help" ]]; then
         howto-list
-    elif [[ -e "$SCRIPT_DIR/$VARIABLE_FILE" ]]; then
-        if [[ $2 == "--atoz" ]]; then
+    elif [[ $2 == "--atoz" ]]; then
+        if [[ -e "$SCRIPT_DIR/$VARIABLE_FILE" ]]; then
             cat $SCRIPT_DIR/$VARIABLE_FILE | awk -F',' '{print $2}' | sort
             exit 0
         else
-            cat $SCRIPT_DIR/$VARIABLE_FILE | awk -F',' '{print $2}'
-            exit 0
-        fi
-    else
-        if [[ $2 == "--atoz" ]]; then
             aws dynamodb scan --table-name $DDB_TABLE | jq -r '.Items[].name.S' | sort
             if [[ ${PIPESTATUS[0]} == 0 ]]; then
                 exit 0
@@ -243,6 +239,48 @@ case $1 in
                 echo 'ERROR: could not connect to DynamoDB.'
                 exit 1
             fi
+        fi
+    elif [[ $2 == "--info" ]]; then  
+        if [[ ! $3 ]]; then
+            echo 'ERROR: please specify an account to retrieve information.'
+            exit 1
+        fi
+        aws dynamodb scan --table-name $DDB_TABLE | jq -r '.Items[] | .name.S' > $VARIABLE_TMP_FILE
+        if grep -Fxq "$3" $VARIABLE_TMP_FILE; then
+            z1=$(aws dynamodb scan --table-name $DDB_TABLE | jq -r --arg e "$3" '.Items[] | select(.name.S==$e) | .region.L[0].S')
+            z2=$(aws dynamodb scan --table-name $DDB_TABLE | jq -r --arg e "$3" '.Items[] | select(.name.S==$e) | .tier.S')
+            z3=$(aws dynamodb scan --table-name $DDB_TABLE | jq -r --arg e "$3" '.Items[] | select(.name.S==$e) | .description.S')
+            z4=$(aws dynamodb scan --table-name $DDB_TABLE | jq -r --arg e "$3" '.Items[] | select(.name.S==$e) | .vcs_inf.L[].S')
+            z5=$(aws dynamodb scan --table-name $DDB_TABLE | jq -r --arg e "$3" '.Items[] | select(.name.S==$e) | .vcs_app.L[].S')
+            echo -e "$(
+            cat <<EOF
+${GREEN}[account name - main region - tier]${NC}
+$3
+$z1
+$z2
+---
+${GREEN}[account description]${NC}
+$z3
+---
+${GREEN}[vcs -> infrastructure]${NC}
+$z4
+---
+${GREEN}[vcs -> application]${NC}
+$z5
+---
+${GREEN}[type to gain '$3' account credentials]${NC}
+letme --c $3
+EOF
+)"
+            exit 0
+        else
+            echo "ERROR: account '$3' not found on the DynamoDB table '$DDB_TABLE'"
+            exit 0
+        fi
+    else
+        if [[ -e "$SCRIPT_DIR/$VARIABLE_FILE" ]]; then
+            cat $SCRIPT_DIR/$VARIABLE_FILE | awk -F',' '{print $2}'
+            exit 0
         else
             aws dynamodb scan --table-name $DDB_TABLE | jq -r '.Items[].name.S'
             if [[ ${PIPESTATUS[0]} == 0 ]]; then
@@ -251,7 +289,6 @@ case $1 in
                 echo 'ERROR: could not connect to DynamoDB.'
                 exit 1
             fi
-            exit 0
         fi
     fi
 	;;
